@@ -50,7 +50,7 @@ export default function Footer() {
         </ScrollReveal>
 
         <p className="text-[11px] text-gray-500 mt-8">
-          The Wedding of {weddingData.bride.name} &amp; {weddingData.groom.name} • 09.10.2026 • Tanjung Mutiara, Agam, Sumatera Barat
+          The Wedding of {weddingData.bride.name} &amp; {weddingData.groom.name} • 09.10.2026 • Pantai Torpedo Ujung Labung, Sumatera Barat
         </p>
       </div>
     </footer>

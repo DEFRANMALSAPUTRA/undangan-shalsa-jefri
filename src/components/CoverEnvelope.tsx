@@ -87,7 +87,7 @@ export default function CoverEnvelope({ guestName, isOpen, onOpen }: CoverEnvelo
               style={{ color: "#E5C06E", border: "1px solid rgba(201,162,39,0.3)", background: "rgba(201,162,39,0.08)" }}>
               <span className="font-bold">09 . 10 . 2026</span>
               <span style={{ color: "#C9A227" }}>•</span>
-              <span>Tanjung Mutiara, Agam</span>
+              <span>Pantai Torpedo Ujung Labung, Sumatera Barat</span>
             </div>
 
 

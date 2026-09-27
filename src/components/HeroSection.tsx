@@ -157,7 +157,7 @@ export default function HeroSection({ isOpened = false, onOpen }: HeroSectionPro
                 textShadow: "0 2px 10px rgba(0,0,0,0.9)",
               }}
             >
-              Tanjung Mutiara, Sumatera Barat
+              Pantai Torpedo Ujung Labung, Sumatera Barat
             </p>
           </div>
         </div>
