@@ -16,32 +16,7 @@ export interface Wish {
   likes: number;
 }
 
-const INITIAL_WISHES: Wish[] = [
-  {
-    id: "1",
-    name: "Dimas Pratama & Keluarga",
-    status: "Hadir",
-    message: "Barakallahu lakuma wa baraka alaikuma wa jama'a bainakuma fii khair. Selamat untuk Shalsa & Jefri! Semoga menjadi keluarga yang sakinah, mawaddah, warahmah.",
-    createdAt: "Baru saja",
-    likes: 8,
-  },
-  {
-    id: "2",
-    name: "Siti Rahmadani",
-    status: "Hadir",
-    message: "Selamat menempuh hidup baru untuk Shalsa & Jefri! Semoga berkah dan bahagia selalu sampai maut memisahkan. Aamiin ya rabbal alamin.",
-    createdAt: "1 jam lalu",
-    likes: 5,
-  },
-  {
-    id: "3",
-    name: "Budi Santoso & Rekan",
-    status: "Tidak Hadir",
-    message: "Selamat berbahagia untuk kedua mempelai! Mohon maaf belum bisa hadir langsung, namun doa terbaik senantiasa kami panjatkan untuk Shalsa & Jefri.",
-    createdAt: "3 jam lalu",
-    likes: 3,
-  },
-];
+const INITIAL_WISHES: Wish[] = [];
 
 function formatTimeAgo(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "Baru saja";
@@ -98,7 +73,7 @@ export default function RsvpSection() {
           .select("*")
           .order("created_at", { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           const mapped: Wish[] = data.map((item) => ({
             id: item.id,
             name: item.name,
@@ -431,78 +406,92 @@ export default function RsvpSection() {
             </div>
           </div>
 
-          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-            {wishes.map((wish) => {
-              const isMyWish = myWishIds.includes(String(wish.id));
-              const isDeletingThis = deletingId === wish.id;
+          {wishes.length === 0 ? (
+            <div
+              className="p-6 rounded-xl border text-center text-xs sm:text-sm text-gray-600"
+              style={{
+                background: "#FAF0DC",
+                borderColor: "rgba(201,162,39,0.4)",
+              }}
+            >
+              <p className="font-serif italic">
+                Belum ada untaian doa. Jadilah yang pertama memberikan doa restu &amp; konfirmasi kehadiran! ✨
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              {wishes.map((wish) => {
+                const isMyWish = myWishIds.includes(String(wish.id));
+                const isDeletingThis = deletingId === wish.id;
 
-              return (
-                <div
-                  key={wish.id}
-                  className="p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all"
-                  style={{
-                    background: "#FAF0DC",
-                    borderColor: "rgba(201,162,39,0.4)",
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="flex items-center flex-wrap gap-1.5">
-                      <span className="font-bold text-gray-900">{wish.name}</span>
-                      <span
-                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{
-                          background:
-                            wish.status === "Hadir"
-                              ? "rgba(45,122,74,0.15)"
-                              : "rgba(104,16,16,0.12)",
-                          color: wish.status === "Hadir" ? "#1A4A2E" : "#540C0C",
-                          border: "1px solid rgba(201,162,39,0.3)",
-                        }}
-                      >
-                        {wish.status}
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {wish.createdAt}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {/* Delete button (only visible for creator of this wish) */}
-                      {isMyWish && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(wish.id)}
-                          disabled={isDeletingThis}
-                          title="Hapus ucapan saya"
-                          className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-700 transition-colors p-1 rounded hover:bg-red-100/50"
+                return (
+                  <div
+                    key={wish.id}
+                    className="p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all"
+                    style={{
+                      background: "#FAF0DC",
+                      borderColor: "rgba(201,162,39,0.4)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="flex items-center flex-wrap gap-1.5">
+                        <span className="font-bold text-gray-900">{wish.name}</span>
+                        <span
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{
+                            background:
+                              wish.status === "Hadir"
+                                ? "rgba(45,122,74,0.15)"
+                                : "rgba(104,16,16,0.12)",
+                            color: wish.status === "Hadir" ? "#1A4A2E" : "#540C0C",
+                            border: "1px solid rgba(201,162,39,0.3)",
+                          }}
                         >
-                          {isDeletingThis ? (
-                            <Loader2 className="w-3 h-3 animate-spin text-red-600" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      )}
+                          {wish.status}
+                        </span>
+                        <span className="text-[10px] text-gray-500">
+                          {wish.createdAt}
+                        </span>
+                      </div>
 
-                      {/* Like button */}
-                      <button
-                        onClick={() => handleLike(wish.id)}
-                        className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-rose-600 transition-colors"
-                      >
-                        <Heart
-                          className={`w-3.5 h-3.5 ${
-                            likedMap[wish.id] ? "fill-rose-600 text-rose-600" : ""
-                          }`}
-                        />
-                        <span>{wish.likes}</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {/* Delete button (only visible for creator of this wish) */}
+                        {isMyWish && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(wish.id)}
+                            disabled={isDeletingThis}
+                            title="Hapus ucapan saya"
+                            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-700 transition-colors p-1 rounded hover:bg-red-100/50"
+                          >
+                            {isDeletingThis ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-red-600" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+
+                        {/* Like button */}
+                        <button
+                          onClick={() => handleLike(wish.id)}
+                          className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-rose-600 transition-colors"
+                        >
+                          <Heart
+                            className={`w-3.5 h-3.5 ${
+                              likedMap[wish.id] ? "fill-rose-600 text-rose-600" : ""
+                            }`}
+                          />
+                          <span>{wish.likes}</span>
+                        </button>
+                      </div>
                     </div>
+                    <p className="text-gray-700 leading-relaxed mt-1 text-xs">{wish.message}</p>
                   </div>
-                  <p className="text-gray-700 leading-relaxed mt-1 text-xs">{wish.message}</p>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </section>
