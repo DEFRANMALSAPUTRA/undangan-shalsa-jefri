@@ -76,7 +76,7 @@ export default function HeroSection({ isOpened = false, onOpen }: HeroSectionPro
   return (
     <section
       id="beranda"
-      className="relative w-full h-[100dvh] min-h-screen flex flex-col items-center justify-end text-center overflow-hidden"
+      className="relative w-full h-[100dvh] min-h-screen flex flex-col items-center justify-center text-center overflow-hidden"
       style={{ background: "#2D0505" }}
     >
       {/* Rumah Gadang background image */}
@@ -93,16 +93,16 @@ export default function HeroSection({ isOpened = false, onOpen }: HeroSectionPro
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(to bottom, rgba(30,4,4,0.4) 0%, rgba(30,4,4,0.15) 25%, rgba(45,6,6,0.55) 60%, rgba(45,8,8,0.88) 85%, #2D0505 100%)",
+              "linear-gradient(to bottom, rgba(30,4,4,0.45) 0%, rgba(30,4,4,0.35) 30%, rgba(45,6,6,0.65) 60%, rgba(45,8,8,0.85) 100%)",
           }}
         />
       </div>
 
       {/* Hero Content */}
-      <div className="relative z-20 px-4 max-w-xl mx-auto text-center pb-8 sm:pb-12 w-full">
+      <div className="relative z-20 px-4 max-w-xl mx-auto text-center w-full flex flex-col items-center justify-center py-6">
         <div className="animate-fade-in" style={{ animationDuration: "0.8s" }}>
           <p
-            className="text-xs sm:text-sm uppercase tracking-[0.4em] font-semibold mb-2"
+            className="text-xs sm:text-sm uppercase tracking-[0.4em] font-semibold mb-1 sm:mb-2"
             style={{ color: "#E5C06E", textShadow: "0 2px 10px rgba(0,0,0,0.8)" }}
           >
             The Wedding Of
