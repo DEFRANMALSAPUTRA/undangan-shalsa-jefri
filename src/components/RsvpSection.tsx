@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import confetti from "canvas-confetti";
-import { CheckCircle2, MessageSquare, Heart, Send } from "lucide-react";
+import { CheckCircle2, MessageSquare, Heart, Send, Loader2 } from "lucide-react";
 import ScrollReveal from "@/components/ScrollReveal";
 import { ParchmentCard } from "@/components/MinangDecorations";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export interface Wish {
-  id: string;
+  id: string | number;
   name: string;
   status: "Hadir" | "Tidak Hadir" | "Ragu-ragu";
   message: string;
@@ -42,15 +43,65 @@ const INITIAL_WISHES: Wish[] = [
   },
 ];
 
+function formatTimeAgo(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return "Baru saja";
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return String(dateInput);
+
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return "Baru saja";
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes} menit lalu`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours} jam lalu`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 30) return `${diffInDays} hari lalu`;
+
+  return date.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export default function RsvpSection() {
   const [wishes, setWishes] = useState<Wish[]>(INITIAL_WISHES);
   const [name, setName] = useState("");
   const [status, setStatus] = useState<"Hadir" | "Tidak Hadir" | "Ragu-ragu">("Hadir");
   const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
+  const [likedMap, setLikedMap] = useState<Record<string | number, boolean>>({});
 
-  useEffect(() => {
+  // 1. Load Wishes (from Supabase or fallback to LocalStorage/Defaults)
+  const fetchWishes = useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("wishes")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          const mapped: Wish[] = data.map((item) => ({
+            id: item.id,
+            name: item.name,
+            status: (item.status as any) || "Hadir",
+            message: item.message,
+            createdAt: formatTimeAgo(item.created_at),
+            likes: Number(item.likes || 0),
+          }));
+          setWishes(mapped);
+          return;
+        }
+      } catch (err) {
+        console.error("Supabase fetch error:", err);
+      }
+    }
+
+    // Fallback if Supabase is not yet configured
     try {
       const saved = localStorage.getItem("wedding_wishes_minang");
       if (saved) {
@@ -61,27 +112,82 @@ export default function RsvpSection() {
     }
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
+  useEffect(() => {
+    fetchWishes();
 
-    const newWish: Wish = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      status,
-      message: message.trim() || "Selamat berbahagia dan semoga sakinah, mawaddah, warahmah.",
-      createdAt: "Baru saja",
-      likes: 1,
-    };
+    // 2. Realtime listener if Supabase is enabled
+    if (isSupabaseConfigured && supabase) {
+      const channel = supabase
+        .channel("realtime_wishes")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "wishes" },
+          () => {
+            fetchWishes();
+          }
+        )
+        .subscribe();
 
-    const updated = [newWish, ...wishes];
-    setWishes(updated);
-
-    try {
-      localStorage.setItem("wedding_wishes_minang", JSON.stringify(updated));
-    } catch {
-      /* ignore */
+      return () => {
+        if (supabase) {
+          supabase.removeChannel(channel);
+        }
+      };
     }
+  }, [fetchWishes]);
+
+  // Handle Form Submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    const trimmedName = name.trim();
+    const finalMsg = message.trim() || "Selamat berbahagia dan semoga sakinah, mawaddah, warahmah.";
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from("wishes").insert([
+          {
+            name: trimmedName,
+            status,
+            message: finalMsg,
+            likes: 0,
+          },
+        ]);
+
+        if (error) {
+          console.error("Supabase insert error:", error);
+          alert("Gagal mengirim ke database: " + error.message);
+        } else {
+          await fetchWishes();
+        }
+      } catch (err) {
+        console.error("Submit error:", err);
+      }
+    } else {
+      // Offline / LocalStorage fallback
+      const newWish: Wish = {
+        id: Date.now().toString(),
+        name: trimmedName,
+        status,
+        message: finalMsg,
+        createdAt: "Baru saja",
+        likes: 0,
+      };
+
+      const updated = [newWish, ...wishes];
+      setWishes(updated);
+
+      try {
+        localStorage.setItem("wedding_wishes_minang", JSON.stringify(updated));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setIsSubmitting(false);
+    setIsSubmitted(true);
 
     try {
       confetti({
@@ -93,16 +199,37 @@ export default function RsvpSection() {
     } catch {
       /* ignore */
     }
-
-    setIsSubmitted(true);
   };
 
-  const handleLike = (id: string) => {
+  // Handle Like
+  const handleLike = async (id: string | number) => {
     if (likedMap[id]) return;
+
     setLikedMap((prev) => ({ ...prev, [id]: true }));
+
+    // Optimistic UI update
     setWishes((prev) =>
       prev.map((item) => (item.id === id ? { ...item, likes: item.likes + 1 } : item))
     );
+
+    if (isSupabaseConfigured && supabase) {
+      const target = wishes.find((w) => w.id === id);
+      const newCount = (target?.likes || 0) + 1;
+      try {
+        await supabase.from("wishes").update({ likes: newCount }).eq("id", id);
+      } catch (err) {
+        console.error("Like error:", err);
+      }
+    } else {
+      try {
+        const updated = wishes.map((item) =>
+          item.id === id ? { ...item, likes: item.likes + 1 } : item
+        );
+        localStorage.setItem("wedding_wishes_minang", JSON.stringify(updated));
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   return (
@@ -113,7 +240,7 @@ export default function RsvpSection() {
     >
       <div className="max-w-xl mx-auto">
         <ScrollReveal animation="fade-up" threshold={0.15}>
-          {/* Parchment Card matching Reference #8 */}
+          {/* Parchment Card matching Minang Theme */}
           <ParchmentCard className="text-center py-8 px-6 sm:px-10">
             {/* Title */}
             <h2
@@ -145,7 +272,7 @@ export default function RsvpSection() {
                     setIsSubmitted(false);
                     setMessage("");
                   }}
-                  className="text-xs font-semibold underline text-[#540C0C]"
+                  className="text-xs font-semibold underline text-[#540C0C] hover:opacity-80 transition-opacity"
                 >
                   Kirim Konfirmasi Lain
                 </button>
@@ -160,7 +287,8 @@ export default function RsvpSection() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Nama Lengkap"
-                    className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-1 focus:ring-[#C9A227] bg-[#FFFDF8]"
+                    disabled={isSubmitting}
+                    className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-1 focus:ring-[#C9A227] bg-[#FFFDF8] disabled:opacity-50"
                     style={{ borderColor: "#C9A227" }}
                   />
                 </div>
@@ -170,7 +298,8 @@ export default function RsvpSection() {
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-1 focus:ring-[#C9A227] bg-[#FFFDF8] text-gray-800"
+                    disabled={isSubmitting}
+                    className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-1 focus:ring-[#C9A227] bg-[#FFFDF8] text-gray-800 disabled:opacity-50"
                     style={{ borderColor: "#C9A227" }}
                   >
                     <option value="Hadir">Hadir</option>
@@ -186,20 +315,31 @@ export default function RsvpSection() {
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Ucapan & Doa Restu (opsional)"
-                    className="w-full p-3 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-1 focus:ring-[#C9A227] bg-[#FFFDF8] resize-none"
+                    disabled={isSubmitting}
+                    className="w-full p-3 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-1 focus:ring-[#C9A227] bg-[#FFFDF8] resize-none disabled:opacity-50"
                     style={{ borderColor: "#C9A227" }}
                   />
                 </div>
 
-                {/* Button: "Kirim Konfirmasi" matching Reference #8 */}
+                {/* Button: "Kirim Konfirmasi" */}
                 <div className="pt-2 text-center">
                   <button
                     type="submit"
-                    className="btn-maroon w-full sm:w-auto"
+                    disabled={isSubmitting}
+                    className="btn-maroon w-full sm:w-auto flex items-center justify-center gap-2 mx-auto disabled:opacity-60"
                     style={{ padding: "0.7rem 2.8rem" }}
                   >
-                    <Send className="w-3.5 h-3.5 text-[#E5C06E]" />
-                    <span>Kirim Konfirmasi</span>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E5C06E]" />
+                        <span>Mengirim...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5 text-[#E5C06E]" />
+                        <span>Kirim Konfirmasi</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -222,7 +362,7 @@ export default function RsvpSection() {
             {wishes.map((wish) => (
               <div
                 key={wish.id}
-                className="p-3.5 rounded-xl border text-left text-xs sm:text-sm"
+                className="p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all"
                 style={{
                   background: "#FAF0DC",
                   borderColor: "rgba(201,162,39,0.4)",
@@ -244,10 +384,13 @@ export default function RsvpSection() {
                     >
                       {wish.status}
                     </span>
+                    <span className="text-[10px] text-gray-500 ml-2">
+                      {wish.createdAt}
+                    </span>
                   </div>
                   <button
                     onClick={() => handleLike(wish.id)}
-                    className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-rose-600"
+                    className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-rose-600 transition-colors"
                   >
                     <Heart
                       className={`w-3.5 h-3.5 ${
