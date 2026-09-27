@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import confetti from "canvas-confetti";
-import { CheckCircle2, MessageSquare, Heart, Send, Loader2 } from "lucide-react";
+import { CheckCircle2, MessageSquare, Heart, Send, Loader2, Trash2 } from "lucide-react";
 import ScrollReveal from "@/components/ScrollReveal";
 import { ParchmentCard } from "@/components/MinangDecorations";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -74,6 +74,20 @@ export default function RsvpSection() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [likedMap, setLikedMap] = useState<Record<string | number, boolean>>({});
+  const [myWishIds, setMyWishIds] = useState<string[]>([]);
+  const [deletingId, setDeletingId] = useState<string | number | null>(null);
+
+  // Load saved myWishIds from localStorage
+  useEffect(() => {
+    try {
+      const savedIds = localStorage.getItem("wedding_my_wish_ids");
+      if (savedIds) {
+        setMyWishIds(JSON.parse(savedIds));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // 1. Load Wishes (from Supabase or fallback to LocalStorage/Defaults)
   const fetchWishes = useCallback(async () => {
@@ -147,19 +161,31 @@ export default function RsvpSection() {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const { error } = await supabase.from("wishes").insert([
-          {
-            name: trimmedName,
-            status,
-            message: finalMsg,
-            likes: 0,
-          },
-        ]);
+        const { data, error } = await supabase
+          .from("wishes")
+          .insert([
+            {
+              name: trimmedName,
+              status,
+              message: finalMsg,
+              likes: 0,
+            },
+          ])
+          .select();
 
         if (error) {
           console.error("Supabase insert error:", error);
           alert("Gagal mengirim ke database: " + error.message);
-        } else {
+        } else if (data && data.length > 0) {
+          // Track this new wish as created by the current user
+          const newId = String(data[0].id);
+          const updatedMyIds = [...myWishIds, newId];
+          setMyWishIds(updatedMyIds);
+          try {
+            localStorage.setItem("wedding_my_wish_ids", JSON.stringify(updatedMyIds));
+          } catch {
+            /* ignore */
+          }
           await fetchWishes();
         }
       } catch (err) {
@@ -167,8 +193,9 @@ export default function RsvpSection() {
       }
     } else {
       // Offline / LocalStorage fallback
+      const generatedId = Date.now().toString();
       const newWish: Wish = {
-        id: Date.now().toString(),
+        id: generatedId,
         name: trimmedName,
         status,
         message: finalMsg,
@@ -179,8 +206,12 @@ export default function RsvpSection() {
       const updated = [newWish, ...wishes];
       setWishes(updated);
 
+      const updatedMyIds = [...myWishIds, generatedId];
+      setMyWishIds(updatedMyIds);
+
       try {
         localStorage.setItem("wedding_wishes_minang", JSON.stringify(updated));
+        localStorage.setItem("wedding_my_wish_ids", JSON.stringify(updatedMyIds));
       } catch {
         /* ignore */
       }
@@ -199,6 +230,48 @@ export default function RsvpSection() {
     } catch {
       /* ignore */
     }
+  };
+
+  // Handle Delete (Only for user's own wishes)
+  const handleDelete = async (id: string | number) => {
+    const isConfirmed = window.confirm("Apakah Anda yakin ingin menghapus ucapan Anda?");
+    if (!isConfirmed) return;
+
+    setDeletingId(id);
+
+    // Optimistic UI update
+    setWishes((prev) => prev.filter((item) => String(item.id) !== String(id)));
+
+    const updatedMyIds = myWishIds.filter((item) => item !== String(id));
+    setMyWishIds(updatedMyIds);
+    try {
+      localStorage.setItem("wedding_my_wish_ids", JSON.stringify(updatedMyIds));
+    } catch {
+      /* ignore */
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from("wishes").delete().eq("id", id);
+        if (error) {
+          console.error("Supabase delete error:", error);
+          alert("Gagal menghapus: " + error.message);
+          await fetchWishes();
+        }
+      } catch (err) {
+        console.error("Delete error:", err);
+        await fetchWishes();
+      }
+    } else {
+      try {
+        const remaining = wishes.filter((item) => String(item.id) !== String(id));
+        localStorage.setItem("wedding_wishes_minang", JSON.stringify(remaining));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setDeletingId(null);
   };
 
   // Handle Like
@@ -359,50 +432,76 @@ export default function RsvpSection() {
           </div>
 
           <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-            {wishes.map((wish) => (
-              <div
-                key={wish.id}
-                className="p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all"
-                style={{
-                  background: "#FAF0DC",
-                  borderColor: "rgba(201,162,39,0.4)",
-                }}
-              >
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <div>
-                    <span className="font-bold text-gray-900">{wish.name}</span>
-                    <span
-                      className="ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{
-                        background:
-                          wish.status === "Hadir"
-                            ? "rgba(45,122,74,0.15)"
-                            : "rgba(104,16,16,0.12)",
-                        color: wish.status === "Hadir" ? "#1A4A2E" : "#540C0C",
-                        border: "1px solid rgba(201,162,39,0.3)",
-                      }}
-                    >
-                      {wish.status}
-                    </span>
-                    <span className="text-[10px] text-gray-500 ml-2">
-                      {wish.createdAt}
-                    </span>
+            {wishes.map((wish) => {
+              const isMyWish = myWishIds.includes(String(wish.id));
+              const isDeletingThis = deletingId === wish.id;
+
+              return (
+                <div
+                  key={wish.id}
+                  className="p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all"
+                  style={{
+                    background: "#FAF0DC",
+                    borderColor: "rgba(201,162,39,0.4)",
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="flex items-center flex-wrap gap-1.5">
+                      <span className="font-bold text-gray-900">{wish.name}</span>
+                      <span
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                        style={{
+                          background:
+                            wish.status === "Hadir"
+                              ? "rgba(45,122,74,0.15)"
+                              : "rgba(104,16,16,0.12)",
+                          color: wish.status === "Hadir" ? "#1A4A2E" : "#540C0C",
+                          border: "1px solid rgba(201,162,39,0.3)",
+                        }}
+                      >
+                        {wish.status}
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {wish.createdAt}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Delete button (only visible for creator of this wish) */}
+                      {isMyWish && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(wish.id)}
+                          disabled={isDeletingThis}
+                          title="Hapus ucapan saya"
+                          className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-700 transition-colors p-1 rounded hover:bg-red-100/50"
+                        >
+                          {isDeletingThis ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-red-600" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
+
+                      {/* Like button */}
+                      <button
+                        onClick={() => handleLike(wish.id)}
+                        className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-rose-600 transition-colors"
+                      >
+                        <Heart
+                          className={`w-3.5 h-3.5 ${
+                            likedMap[wish.id] ? "fill-rose-600 text-rose-600" : ""
+                          }`}
+                        />
+                        <span>{wish.likes}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleLike(wish.id)}
-                    className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-rose-600 transition-colors"
-                  >
-                    <Heart
-                      className={`w-3.5 h-3.5 ${
-                        likedMap[wish.id] ? "fill-rose-600 text-rose-600" : ""
-                      }`}
-                    />
-                    <span>{wish.likes}</span>
-                  </button>
+                  <p className="text-gray-700 leading-relaxed mt-1 text-xs">{wish.message}</p>
                 </div>
-                <p className="text-gray-700 leading-relaxed mt-1 text-xs">{wish.message}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
